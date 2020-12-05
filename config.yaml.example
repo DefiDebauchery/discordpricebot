@@ -1,0 +1,20 @@
+---
+_config:
+  amm:
+    pancakeswap: '0x1B96B92314C44b159149f7E0303511fB2Fc4774f'
+    streetswap: '0xf2e4E3F9B58b3eDaC88Ad11D689a23f3119a782D'
+  defaults:
+    refresh_rate: 15 # How often prices refresh
+    icon: ''
+CAKE:
+  apikey: ABCDEF  # Discord API Key
+  contract: '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82' # Token Contract
+  icon: 🥞 # [Optional] Flavor icon for the user list
+  lp: '0xA527a61703D82139F8a06Bc30097cC9CAA2df5A6' # BNB/[Token] LP Pair Contract
+  from: pancakeswap # Follows keys from _config.amm
+THUGS:
+  apikey: GHIJKL
+  contract: '0xE10e9822A5de22F8761919310DDA35CD997d63c0'
+  icon: 👊
+  lp: '0x9354caB0F1083135439B23aA6c364329e578F39a'
+  from: streetswap

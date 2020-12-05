@@ -7,26 +7,9 @@ This bot will interface with both Discord and the BSC Network to continually kee
 Note that this will only report the mid-price; buying and selling the tokens will be lower/higher than the listed price.
 
 ### Configuration
-```
-token = {
-    'contract'   : '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82',
-    'name'       : 'CAKE',
-    'icon'       : '🥞',
-    'lp_contract': '0xA527a61703D82139F8a06Bc30097cC9CAA2df5A6',
-    'busd_lp'    : '0x1B96B92314C44b159149f7E0303511fB2Fc4774f'
-}
+See `config.yaml.example`. The token ticker is the parent key of the configuration.
 
-token['abi'] = pricebot.fetch_abi(token['contract'])
-```
-
-The `contract` is the Token itself.  
-The LP variables refer to the AMM you want to use as your price reference:  
-`lp_contract` is the BNB/{Token} LP Pair address  
-`busd_lp` is the BNB/BUSD pair for the AMM for USD price calculation.
-
-The `name` and `icon` simply give flavor to the bot. The icon can be omitted.
-
-The web3 module requires all addresses to be [checksummed](https://coincodex.com/article/2078/ethereum-address-checksum-explained/); you can get the proper address from BSCScan.
+The web3 module requires all addresses to be [checksummed](https://coincodex.com/article/2078/ethereum-address-checksum-explained/); you can get the proper address from [BSCScan](https://bscscan.com/).
 
 ### Authorizing Discord User
 
@@ -43,10 +26,9 @@ A single bot instance can be added to multiple servers; the bot's nickname (the 
 This assumes you already have python3 and pip3 installed on your system.
 
 Install the pre-requisites:  
-`pip3 install discord web3 rusty-rlp`
+`pip3 install requirements.txt`
 
-For each token bot you want to run (one Discord bot per token), simply copy the entry script, then run it. For long-term execution on *nix environments, consider using `nohup`:  
-`nohup python3 cake.py &`
+You can run all configured tokens simply by `python3 main.py`, or pass a token argument to run individual instances (good for testing), such as `python3 main.py CAKE`.
 
 ### Contributing
 I need all the help I can get. PRs welcome.
