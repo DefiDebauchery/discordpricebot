@@ -110,8 +110,10 @@ class PriceBot(discord.Client):
         if len(args) < 2 and args[1] != 'lp':
             return
 
-        if len(args) >= 3 and (num_tokens := self.parse_float(args[2])):
-            multi = num_tokens
+        if len(args) >= 3:
+            num_tokens = self.parse_float(args[2])
+            if num_tokens:
+                multi = num_tokens
 
         values = await self.get_lp_value()
         lp_price = self.current_price * values[0] * 2
