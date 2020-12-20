@@ -10,6 +10,10 @@ with open('config.yaml') as cfg_file:
 
 cfg_defaults = cfg_data.pop('_config')
 
+if len(sys.argv) < 2:
+    print(f"Usage: {sys.argv[0]} <token>")
+    sys.exit()
+
 if sys.argv[1] and cfg_data.get(sys.argv[1]):
     cfg_data = {sys.argv[1]: cfg_data.get(sys.argv[1])}
 else:

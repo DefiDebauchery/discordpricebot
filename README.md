@@ -28,7 +28,8 @@ This assumes you already have python3 and pip3 installed on your system.
 Install the pre-requisites:  
 `pip3 install requirements.txt`
 
-You can run all configured tokens simply by `python3 main.py`, or pass a token argument to run individual instances (good for testing), such as `python3 main.py CAKE`.
+Due to limitations in the discord.py module, you cannot run all bots in one instance. 
+Therefore, you will need to create a new instance for each token by passing the argument, such as `nohup python3 main.py CAKE &`.
 
 ### Contributing
 I need all the help I can get. PRs welcome.
