@@ -79,7 +79,7 @@ class PriceBot(discord.Client):
         return self.token['name'] + ' price'
 
     def generate_nickname(self):
-        return self.token['icon'] + ' $' + str(self.current_price)
+        return f"{self.token['icon']} ${str(self.current_price)} ({round(self.bnb_amount / self.token_amount, 4)})"
 
     async def get_lp_value(self):
         total_supply = self.contracts['lp'].functions.totalSupply().call()
@@ -105,10 +105,18 @@ class PriceBot(discord.Client):
             return
 
         args = message.content.split()
-        multi = 1
-
-        if len(args) < 2 and args[1] != 'lp':
+        if len(args) < 2:
             return
+
+        command = args[1]
+        if command == 'lp':
+            await self.lp_command(message)
+        elif command == 'convert':
+            await self.convert_command(message)
+
+    async def lp_command(self, message: discord.Message):
+        args = message.content.split()
+        multi = 1
 
         if len(args) >= 3:
             num_tokens = self.parse_float(args[2])
@@ -121,6 +129,20 @@ class PriceBot(discord.Client):
         msg = f"{multi} LP Token{' is' if multi == 1 else 's are'} worth ≈${round(lp_price * multi, 4)}\n" \
               f"{round(values[0] * multi, 5)} {self.token['icon']} + {round(values[1] * multi, 5)} BNB"
 
+        await message.channel.send(msg)
+
+    async def convert_command(self, message: discord.Message):
+        args = message.content.split()
+        multi = 1
+
+        if len(args) >= 3:
+            num = self.parse_float(args[2])
+            if num:
+                multi = num
+
+        token_in_bnb = self.bnb_amount / self.token_amount
+
+        msg = f"{multi} {self.token['icon']} is {round(token_in_bnb * multi, 4)} BNB"
         await message.channel.send(msg)
 
     @staticmethod
