@@ -105,7 +105,7 @@ class PriceBot(discord.Client):
             return
 
         args = message.content.split()
-        if len(args) < 2:
+        if args[0] != f"<@!{self.user.id}>" or len(args) < 2:
             return
 
         command = args[1]
