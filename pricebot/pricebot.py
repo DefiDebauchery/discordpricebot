@@ -31,6 +31,7 @@ class PriceBot(discord.Client):
     current_price = 0
     nickname = ''
     bnb_amount = 0
+    bnb_price = 0
     token_amount = 0
 
     # Static BSC contract addresses
@@ -57,7 +58,9 @@ class PriceBot(discord.Client):
         bnb_amount = self.contracts['bnb'].functions.balanceOf(lp).call()
         busd_amount = self.contracts['busd'].functions.balanceOf(lp).call()
 
-        return busd_amount / bnb_amount
+        self.bnb_price = busd_amount / bnb_amount
+
+        return self.bnb_price
 
     def get_price(self, token_contract, native_lp, bnb_lp):
         self.bnb_amount = self.contracts['bnb'].functions.balanceOf(native_lp).call()
@@ -126,7 +129,7 @@ class PriceBot(discord.Client):
         values = await self.get_lp_value()
         lp_price = self.current_price * values[0] * 2
 
-        msg = f"{multi} LP Token{' is' if multi == 1 else 's are'} worth ≈${round(lp_price * multi, 4)}\n" \
+        msg = f"{multi:g} LP Token{' is' if multi == 1 else 's are'} worth ≈${round(lp_price * multi, 4)}\n" \
               f"{round(values[0] * multi, 5)} {self.token['icon']} + {round(values[1] * multi, 5)} BNB"
 
         await message.channel.send(msg)
@@ -142,7 +145,7 @@ class PriceBot(discord.Client):
 
         token_in_bnb = self.bnb_amount / self.token_amount
 
-        msg = f"{multi} {self.token['icon']} is {round(token_in_bnb * multi, 4)} BNB"
+        msg = f"{multi:g} {self.token['icon']} is {round(token_in_bnb * multi, 4)} BNB (${round(token_in_bnb * self.bnb_price * multi, 4)})"
         await message.channel.send(msg)
 
     @staticmethod
