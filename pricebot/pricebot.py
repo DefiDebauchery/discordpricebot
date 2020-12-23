@@ -2,6 +2,7 @@ import json
 import os
 import discord
 from discord.ext import tasks
+from re import search
 from urllib.request import urlopen, Request
 from web3 import Web3
 
@@ -108,7 +109,7 @@ class PriceBot(discord.Client):
             return
 
         args = message.content.split()
-        if args[0] != f"<@!{self.user.id}>" or len(args) < 2:
+        if not search('<@!?\d+>', args[0]) or len(args) < 2:
             return
 
         command = args[1]
