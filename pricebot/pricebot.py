@@ -50,7 +50,7 @@ class PriceBot(commands.Bot):
     }
 
     def __init__(self, config, token):
-        super().__init__(command_prefix=commands.when_mentioned, help_command=None, case_insensitive=True)
+        super().__init__(command_prefix=self.handle_prefix, help_command=None, case_insensitive=True)
         self.config = config
         self.token = token
         self.amm = config['amm'][token['from']]
@@ -62,6 +62,12 @@ class PriceBot(commands.Bot):
         self.contracts['busd'] = self.web3.eth.contract(address=self.address['busd'], abi=self.token['abi'])
         self.contracts['token'] = self.web3.eth.contract(address=self.token['contract'], abi=self.token['abi'])
         self.contracts['lp'] = self.web3.eth.contract(address=self.token['lp'], abi=fetch_abi(self.token['lp']))
+
+    def handle_prefix(self, bot, message):
+        if isinstance(message.channel, discord.channel.DMChannel):
+            return ''
+
+        return commands.when_mentioned(bot, message)
 
     def get_bnb_price(self, lp):
         bnb_amount = self.contracts['bnb'].functions.balanceOf(lp).call()
