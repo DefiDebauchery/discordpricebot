@@ -13,6 +13,8 @@ class PriceCommand(commands.Cog):
             raise error
 
     async def cog_check(self, ctx: commands.Context):
+        if isinstance(ctx.channel, discord.channel.DMChannel):
+            return True
         return await self.bot.check_restrictions(ctx)
 
     @commands.command(name='lp')
