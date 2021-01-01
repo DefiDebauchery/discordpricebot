@@ -7,10 +7,13 @@ class PriceCommand(commands.Cog):
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.CommandNotFound):
+        if isinstance(error, commands.CommandNotFound) or isinstance(error, commands.CheckFailure):
             pass
         else:
             raise error
+
+    async def cog_check(self, ctx: commands.Context):
+        return await self.bot.check_restrictions(ctx)
 
     @commands.command(name='lp')
     async def lp_command(self, ctx: commands.Context, multi=None):

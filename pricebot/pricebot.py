@@ -28,8 +28,9 @@ def fetch_abi(contract):
 
 def list_cogs(directory):
     basedir = (os.path.basename(os.path.dirname(__file__)))
-    #return ['pricebot.commands.price', 'pricebot.commands.admin', 'pricebot.commands.owner']
-    return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if f.endswith('.py'))
+    # return ['pricebot.commands.price', 'pricebot.commands.admin', 'pricebot.commands.owner']
+    return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if
+            f.endswith('.py'))
 
 class PriceBot(commands.Bot):
     web3 = Web3(Web3.HTTPProvider('https://bsc-dataseed2.binance.org'))
@@ -99,17 +100,14 @@ class PriceBot(commands.Bot):
     async def on_guild_join(self, guild):
         await guild.me.edit(nick=self.nickname)
 
-    async def on_message(self, message):
-        server_restriction = self.config.get('restrict_to', {}).get(message.guild.id)
-        if not server_restriction or await self.is_owner(message.author):
-            return await self.process_commands(message)
-
-        if message.channel.id not in server_restriction:
-            if message.channel.permissions_for(message.guild.me).manage_messages:
-                await message.message.delete()
-            return
-
-        await self.process_commands(message)
+    async def check_restrictions(self, ctx):
+        server_restriction = self.config.get('restrict_to', {}).get(ctx.guild.id)
+        if server_restriction and not await self.is_owner(ctx.author):
+            if ctx.channel not in server_restriction:
+                if ctx.channel.permissions_for(ctx.guild.me).manage_messages:
+                    await ctx.message.delete()
+            return False
+        return True
 
     async def on_ready(self):
         restrictions = self.config.get('restrict_to', {})
