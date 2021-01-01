@@ -103,10 +103,10 @@ class PriceBot(commands.Bot):
     async def check_restrictions(self, ctx):
         server_restriction = self.config.get('restrict_to', {}).get(ctx.guild.id)
         if server_restriction and not await self.is_owner(ctx.author):
-            if ctx.channel not in server_restriction:
+            if ctx.channel.id not in server_restriction:
                 if ctx.channel.permissions_for(ctx.guild.me).manage_messages:
                     await ctx.message.delete()
-            return False
+                return False
         return True
 
     async def on_ready(self):
@@ -114,10 +114,10 @@ class PriceBot(commands.Bot):
         all_channels = self.get_all_channels()
         for guild_id, channels in restrictions.items():
             for i, channel in enumerate(channels):
-                if self.parse_int(channel):
-                    channels[i] = self.get_channel(channel)
-                else:
+                if not self.parse_int(channel):
                     channels[i] = discord.utils.get(all_channels, guild__id=guild_id, name=channel)
+                    if not channels[i]:
+                        raise Exception('No channel named channel!')
 
         await self.update_price()
         loop = tasks.loop(seconds=self.config['refresh_rate'])(self.update_price)
