@@ -1,8 +1,9 @@
 import json
-import os
+import os, sys
+
 import discord
-from discord.ext import tasks
-from re import search
+from discord.ext import tasks, commands
+from pathlib import Path
 from urllib.request import urlopen, Request
 from web3 import Web3
 
@@ -25,7 +26,12 @@ def fetch_abi(contract):
 
     return json.loads(abi)
 
-class PriceBot(discord.Client):
+def list_cogs(directory):
+    basedir = (os.path.basename(os.path.dirname(__file__)))
+    #return ['pricebot.commands.price', 'pricebot.commands.admin', 'pricebot.commands.owner']
+    return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if f.endswith('.py'))
+
+class PriceBot(commands.Bot):
     web3 = Web3(Web3.HTTPProvider('https://bsc-dataseed2.binance.org'))
     contracts = {}
     config = {}
@@ -34,6 +40,7 @@ class PriceBot(discord.Client):
     bnb_amount = 0
     bnb_price = 0
     token_amount = 0
+    total_supply = 0
 
     # Static BSC contract addresses
     address = {
@@ -42,7 +49,7 @@ class PriceBot(discord.Client):
     }
 
     def __init__(self, config, token):
-        super().__init__()
+        super().__init__(command_prefix=commands.when_mentioned, help_command=None, case_insensitive=True)
         self.config = config
         self.token = token
         self.amm = config['amm'][token['from']]
@@ -86,14 +93,36 @@ class PriceBot(discord.Client):
         return f"{self.token['icon']} ${str(self.current_price)} ({round(self.bnb_amount / self.token_amount, 4)})"
 
     async def get_lp_value(self):
-        total_supply = self.contracts['lp'].functions.totalSupply().call()
-        return [self.token_amount / total_supply, self.bnb_amount / total_supply]
+        self.total_supply = self.contracts['lp'].functions.totalSupply().call()
+        return [self.token_amount / self.total_supply, self.bnb_amount / self.total_supply]
 
     async def on_guild_join(self, guild):
-        guild.me.edit(nick=self.nickname)
+        await guild.me.edit(nick=self.nickname)
+
+    async def on_message(self, message):
+        server_restriction = self.config.get('restrict_to', {}).get(message.guild.id)
+        if not server_restriction or await self.is_owner(message.author):
+            return await self.process_commands(message)
+
+        if message.channel.id not in server_restriction:
+            if message.channel.permissions_for(message.guild.me).manage_messages:
+                await message.message.delete()
+            return
+
+        await self.process_commands(message)
 
     async def on_ready(self):
-        loop = tasks.loop(seconds=self.token['refresh_rate'])(self.update_price)
+        restrictions = self.config.get('restrict_to', {})
+        all_channels = self.get_all_channels()
+        for guild_id, channels in restrictions.items():
+            for i, channel in enumerate(channels):
+                if self.parse_int(channel):
+                    channels[i] = self.get_channel(channel)
+                else:
+                    channels[i] = discord.utils.get(all_channels, guild__id=guild_id, name=channel)
+
+        await self.update_price()
+        loop = tasks.loop(seconds=self.config['refresh_rate'])(self.update_price)
         loop.add_exception_type(discord.errors.HTTPException)
         loop.start()
 
@@ -104,53 +133,20 @@ class PriceBot(discord.Client):
         for guild in self.guilds:
             await guild.me.edit(nick=self.generate_nickname())
 
-    async def on_message(self, message: discord.Message):
-        if not self.is_ready() or message.author.bot or not self.user.mentioned_in(message):
-            return
+    @staticmethod
+    def parse_int(val):
+        try:
+            val = int(val)
+        except ValueError:
+            val = None
 
-        args = message.content.split()
-        if not search('<@!?\d+>', args[0]) or len(args) < 2:
-            return
-
-        command = args[1]
-        if command == 'lp':
-            await self.lp_command(message)
-        elif command == 'convert':
-            await self.convert_command(message)
-
-    async def lp_command(self, message: discord.Message):
-        args = message.content.split()
-        multi = 1
-
-        if len(args) >= 3:
-            num_tokens = self.parse_float(args[2])
-            if num_tokens:
-                multi = num_tokens
-
-        values = await self.get_lp_value()
-        lp_price = self.current_price * values[0] * 2
-
-        msg = f"{multi:g} LP Token{' is' if multi == 1 else 's are'} worth ≈${round(lp_price * multi, 4)}\n" \
-              f"{round(values[0] * multi, 5)} {self.token['icon']} + {round(values[1] * multi, 5)} BNB"
-
-        await message.channel.send(msg)
-
-    async def convert_command(self, message: discord.Message):
-        args = message.content.split()
-        multi = 1
-
-        if len(args) >= 3:
-            num = self.parse_float(args[2])
-            if num:
-                multi = num
-
-        token_in_bnb = self.bnb_amount / self.token_amount
-
-        msg = f"{multi:g} {self.token['icon']} is {round(token_in_bnb * multi, 4)} BNB (${round(token_in_bnb * self.bnb_price * multi, 4)})"
-        await message.channel.send(msg)
+        return val
 
     @staticmethod
     def parse_float(val):
+        if val is None:
+            return val
+
         try:
             val = float(val)
         except ValueError:
@@ -159,4 +155,14 @@ class PriceBot(discord.Client):
         return val
 
     def exec(self):
+        for cog in list_cogs('commands'):
+            try:
+                if self.token.get('command_override'):
+                    override = self.token.get('command_override')
+                    cog = override.get(cog, cog)
+
+                self.load_extension(cog)
+            except Exception as e:
+                print(f'Failed to load extension {cog}.', e)
+
         self.run(self.token['apikey'])

@@ -1,4 +1,6 @@
+.DS_Store
 config.yaml
 contracts
+pricebot/plugin/
 __pycache__/
 .idea/
