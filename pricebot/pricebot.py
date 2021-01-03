@@ -1,9 +1,8 @@
 import json
 import os, sys
-
+import sqlite3
 import discord
 from discord.ext import tasks, commands
-from pathlib import Path
 from urllib.request import urlopen, Request
 from web3 import Web3
 
@@ -28,12 +27,10 @@ def fetch_abi(contract):
 
 def list_cogs(directory):
     basedir = (os.path.basename(os.path.dirname(__file__)))
-    # return ['pricebot.commands.price', 'pricebot.commands.admin', 'pricebot.commands.owner']
-    return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if
-            f.endswith('.py'))
+    return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if f.endswith('.py'))
 
 class PriceBot(commands.Bot):
-    web3 = Web3(Web3.HTTPProvider('https://bsc-dataseed2.binance.org'))
+    web3 = Web3(Web3.HTTPProvider('https://bsc-dataseed2.binance.org'))  # type: Web3.eth.account
     contracts = {}
     config = {}
     current_price = 0
@@ -94,10 +91,17 @@ class PriceBot(commands.Bot):
         return round(self.get_price(self.contracts['token'], self.token['lp'], self.amm), 4)
 
     def generate_presence(self):
-        return self.token['name'] + ' price'
+        if not self.token_amount:
+            return ''
+
+        total_supply = self.contracts['lp'].functions.totalSupply().call()
+        values = [self.token_amount / total_supply, self.bnb_amount / total_supply]
+        lp_price = self.current_price * values[0] * 2
+
+        return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} {self.token['icon']} + {round(values[1], 4)} BNB"
 
     def generate_nickname(self):
-        return f"{self.token['icon']} ${str(self.current_price)} ({round(self.bnb_amount / self.token_amount, 4)})"
+        return f"{self.token['icon']} ${self.current_price:.4f} ({round(self.bnb_amount / self.token_amount, 4):.4f})"
 
     async def get_lp_value(self):
         self.total_supply = self.contracts['lp'].functions.totalSupply().call()
@@ -131,7 +135,10 @@ class PriceBot(commands.Bot):
         loop.start()
 
     async def update_price(self):
-        await self.change_presence(activity=discord.Game(name=self.generate_presence()))
+        presence = self.generate_presence()
+        if presence:
+            await self.change_presence(activity=discord.Game(name=presence))
+
         self.current_price = self.get_token_price()
 
         for guild in self.guilds:

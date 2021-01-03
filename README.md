@@ -26,7 +26,7 @@ A single bot instance can be added to multiple servers; the bot's nickname (the 
 This assumes you already have python3 and pip3 installed on your system.
 
 Install the pre-requisites:  
-`pip3 install requirements.txt`
+`pip3 install -r requirements.txt`
 
 Due to limitations in the discord.py module, you cannot run all bots in one instance. 
 Therefore, you will need to create a new instance for each token by passing the argument, such as `nohup python3 main.py CAKE &`.
