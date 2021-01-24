@@ -1,6 +1,8 @@
 import json
-import os, sys
-import sqlite3
+import os
+from decimal import Decimal, DecimalException
+from urllib.parse import urlparse
+
 import discord
 from discord.ext import tasks, commands
 from urllib.request import urlopen, Request
@@ -30,7 +32,6 @@ def list_cogs(directory):
     return (f"{basedir}.{directory}.{f.rstrip('.py')}" for f in os.listdir(basedir + '/' + directory) if f.endswith('.py'))
 
 class PriceBot(commands.Bot):
-    web3 = Web3(Web3.HTTPProvider('https://bsc-dataseed2.binance.org'))  # type: Web3.eth.account
     contracts = {}
     config = {}
     current_price = 0
@@ -39,6 +40,7 @@ class PriceBot(commands.Bot):
     bnb_price = 0
     token_amount = 0
     total_supply = 0
+    display_precision = Decimal('0.0001')  # Round to 4 token_decimals
 
     # Static BSC contract addresses
     address = {
@@ -46,8 +48,11 @@ class PriceBot(commands.Bot):
         'busd': '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56'
     }
 
+    intents = discord.Intents.default()
+    intents.members = True
+
     def __init__(self, config, token):
-        super().__init__(command_prefix=self.handle_prefix, help_command=None, case_insensitive=True)
+        super().__init__(command_prefix=self.handle_prefix, case_insensitive=True)
         self.config = config
         self.token = token
         self.amm = config['amm'][token['from']]
@@ -55,10 +60,26 @@ class PriceBot(commands.Bot):
         if not config['amm'].get(token['from']):
             raise Exception(f"{token['name']}'s AMM {token['from']} does not exist!")
 
+        if node := config.get('bsc_node'):
+            bsc_node = urlparse(node)
+            if 'http' in bsc_node.scheme:
+                provider = Web3.HTTPProvider(node)
+            else:
+                provider = Web3.IPCProvider(bsc_node.path)
+
+            self.web3 = Web3(provider)  # type: Web3.eth.account
+        else:
+            raise Exception("Required setting 'bsc_node' not configured!")
+
         self.contracts['bnb'] = self.web3.eth.contract(address=self.address['bnb'], abi=self.token['abi'])
         self.contracts['busd'] = self.web3.eth.contract(address=self.address['busd'], abi=self.token['abi'])
         self.contracts['token'] = self.web3.eth.contract(address=self.token['contract'], abi=self.token['abi'])
         self.contracts['lp'] = self.web3.eth.contract(address=self.token['lp'], abi=fetch_abi(self.token['lp']))
+
+        if not self.token.get('decimals'):
+            self.token['decimals'] = self.contracts['token'].functions.decimals().call()
+
+        self.help_command = commands.DefaultHelpCommand(command_attrs={"hidden": True})
 
     def handle_prefix(self, bot, message):
         if isinstance(message.channel, discord.channel.DMChannel):
@@ -66,39 +87,57 @@ class PriceBot(commands.Bot):
 
         return commands.when_mentioned(bot, message)
 
-    def get_bnb_price(self, lp):
-        bnb_amount = self.contracts['bnb'].functions.balanceOf(lp).call()
-        busd_amount = self.contracts['busd'].functions.balanceOf(lp).call()
+    def get_amm(self, amm=None):
+        if not amm:
+            return self.amm
 
-        self.bnb_price = busd_amount / bnb_amount
+        return self.config['amm'].get(amm)
+
+    def icon_value(self, value=None):
+        if self.token['emoji'] or self.token['icon']:
+            value = f" {value}" if value else ''
+            return f"{self.token['emoji'] or self.token['icon']}{value}"
+
+        value = f"{value} " if value else ''
+        return f"{value}{self.token['name']}"
+
+    def get_bnb_price(self, lp):
+        bnb_amount = Decimal(self.contracts['bnb'].functions.balanceOf(lp).call())
+        busd_amount = Decimal(self.contracts['busd'].functions.balanceOf(lp).call())
+
+        self.bnb_price = Decimal(busd_amount) / Decimal(bnb_amount)
 
         return self.bnb_price
 
     def get_price(self, token_contract, native_lp, bnb_lp):
-        self.bnb_amount = self.contracts['bnb'].functions.balanceOf(native_lp).call()
-        self.token_amount = token_contract.functions.balanceOf(native_lp).call()
+        self.bnb_amount = Decimal(self.contracts['bnb'].functions.balanceOf(native_lp).call())
+        self.token_amount = Decimal(token_contract.functions.balanceOf(native_lp).call()) * \
+                            Decimal(10 ** (18 - self.token["decimals"]))  # Normalize token_decimals
 
         bnb_price = self.get_bnb_price(bnb_lp)
 
         try:
-            final_price = (self.bnb_amount / self.token_amount) * bnb_price
+            final_price = self.bnb_amount / self.token_amount * bnb_price
         except ZeroDivisionError:
             final_price = 0
 
         return final_price
 
     def get_token_price(self):
-        return round(self.get_price(self.contracts['token'], self.token['lp'], self.amm), 4)
+        return self.get_price(self.contracts['token'], self.token['lp'], self.amm['address']).quantize(self.display_precision)
 
     def generate_presence(self):
         if not self.token_amount:
             return ''
 
-        total_supply = self.contracts['lp'].functions.totalSupply().call()
-        values = [self.token_amount / total_supply, self.bnb_amount / total_supply]
-        lp_price = self.current_price * values[0] * 2
+        try:
+            total_supply = self.contracts['lp'].functions.totalSupply().call()
+            values = [Decimal(self.token_amount / total_supply), Decimal(self.bnb_amount / total_supply)]
+            lp_price = self.current_price * values[0] * 2
 
-        return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} {self.token['icon']} + {round(values[1], 4)} BNB"
+            return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} {self.token['icon']} + {round(values[1], 4)} BNB"
+        except ValueError:
+            pass
 
     def generate_nickname(self):
         return f"{self.token['icon']} ${self.current_price:.4f} ({round(self.bnb_amount / self.token_amount, 4):.4f})"
@@ -154,13 +193,10 @@ class PriceBot(commands.Bot):
         return val
 
     @staticmethod
-    def parse_float(val):
-        if val is None:
-            return val
-
+    def parse_decimal(val):
         try:
-            val = float(val)
-        except ValueError:
+            val = Decimal(val)
+        except (TypeError, DecimalException):
             val = None
 
         return val

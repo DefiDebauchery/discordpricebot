@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
 
-class AdminCommand(commands.Cog):
+class Admin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
@@ -18,6 +18,8 @@ class AdminCommand(commands.Cog):
             raise error
 
     @commands.group(name='restriction')
+    @commands.guild_only()
+    @commands.has_permissions(manage_channels=True)
     async def restriction(self, ctx: commands.Context):
         if ctx.invoked_subcommand is None:
             pass
@@ -56,4 +58,4 @@ class AdminCommand(commands.Cog):
         await ctx.channel.send(f'Clearing all restrictions.')
 
 def setup(bot: commands.Bot):
-    bot.add_cog(AdminCommand(bot))
+    bot.add_cog(Admin(bot))
