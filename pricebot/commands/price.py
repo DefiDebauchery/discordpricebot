@@ -1,14 +1,63 @@
 import math
+from datetime import datetime
 
 import discord
-from discord.embeds import EmptyEmbed
-from discord.ext import commands
+from discord.ext import tasks, commands
 from decimal import Decimal, DecimalException
 from web3 import Web3
+from pricebot.commands.models import prices
 
 class Prices(commands.Cog, command_attrs=dict(hidden=True)):
+    current_ath = None
+
     def __init__(self, bot):
         self.bot = bot
+        self.db = bot.db
+
+        prices.Base.metadata.create_all(self.bot.dbengine)
+        query = self.db.query(prices.PriceATH).filter(prices.PriceATH.token == self.bot.token['contract'])
+        if result := query.first():
+            self.current_ath = result
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.update_price()
+
+        self.bot.priceloop = tasks.loop(seconds=self.bot.config['refresh_rate'])(self.update_price)
+        self.bot.priceloop.add_exception_type(discord.errors.HTTPException)
+        self.bot.priceloop.start()
+
+    async def update_price(self):
+        try:
+            self.bot.current_price = self.bot.get_token_price()
+        except Exception:
+            # Ignore issues with blockchain timeouts, but don't update anything
+            return
+
+        for guild in self.bot.guilds:
+            await guild.me.edit(nick=self.bot.generate_nickname())
+
+        if self.current_ath:
+            if self.bot.current_price > self.current_ath.price:
+                try:
+                    self.current_ath.price = self.bot.current_price
+                    self.current_ath.timestamp = datetime.utcnow()
+
+                    self.db.update(self.current_ath)
+                    self.db.commit()
+                    return await self.bot.change_presence(activity=discord.Game(name='ATH Hit!'))
+                except Exception:
+                    pass
+        else:
+            ath = prices.PriceATH(token=self.bot.token['contract'], price=self.bot.current_price)
+            self.db.add(ath)
+            self.db.commit()
+
+            self.current_ath = ath
+
+        presence = self.bot.generate_presence()
+        if presence:
+            await self.bot.change_presence(activity=discord.Game(name=presence))
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
@@ -68,6 +117,24 @@ class Prices(commands.Cog, command_attrs=dict(hidden=True)):
         amm_info = self.bot.get_amm()
         if amm_info.get('name'):
             embed.set_footer(text=f"via {amm_info.get('name')}")
+
+        await ctx.channel.send(embed=embed)
+
+    @commands.command()
+    async def ath(self, ctx: commands.Context):
+        token_emoji = self.bot.icon_value()
+        if not self.current_ath:
+            return
+
+        time = self.current_ath.timestamp.strftime('%Y-%m-%d %H:%M:%S UTC')
+
+        output_body = f"The highest price for {self.bot.token['name']} was **${self.current_ath.price}**"
+
+        embed = discord.Embed(color=discord.Color.green(), title=token_emoji + ' All Time High', description=output_body)
+
+        amm_info = self.bot.get_amm()
+        if amm_info.get('name'):
+            embed.set_footer(text=f"Recorded {time} via {amm_info.get('name')}")
 
         await ctx.channel.send(embed=embed)
 

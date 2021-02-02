@@ -7,6 +7,8 @@ import discord
 from discord.ext import tasks, commands
 from urllib.request import urlopen, Request
 from web3 import Web3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 def fetch_abi(contract):
     if not os.path.exists('contracts'):
@@ -81,6 +83,10 @@ class PriceBot(commands.Bot):
 
         self.help_command = commands.DefaultHelpCommand(command_attrs={"hidden": True})
 
+        self.dbengine = create_engine('sqlite:///pricebot.db', echo=True)
+        session = sessionmaker(bind=self.dbengine)
+        self.db = session()
+
     def handle_prefix(self, bot, message):
         if isinstance(message.channel, discord.channel.DMChannel):
             return ''
@@ -111,8 +117,7 @@ class PriceBot(commands.Bot):
 
     def get_price(self, token_contract, native_lp, bnb_lp):
         self.bnb_amount = Decimal(self.contracts['bnb'].functions.balanceOf(native_lp).call())
-        self.token_amount = Decimal(token_contract.functions.balanceOf(native_lp).call()) * \
-                            Decimal(10 ** (18 - self.token["decimals"]))  # Normalize token_decimals
+        self.token_amount = Decimal(token_contract.functions.balanceOf(native_lp).call()) * Decimal(10 ** (18 - self.token["decimals"]))  # Normalize token_decimals
 
         bnb_price = self.get_bnb_price(bnb_lp)
 
@@ -167,21 +172,6 @@ class PriceBot(commands.Bot):
                     channels[i] = discord.utils.get(all_channels, guild__id=guild_id, name=channel)
                     if not channels[i]:
                         raise Exception('No channel named channel!')
-
-        await self.update_price()
-        loop = tasks.loop(seconds=self.config['refresh_rate'])(self.update_price)
-        loop.add_exception_type(discord.errors.HTTPException)
-        loop.start()
-
-    async def update_price(self):
-        presence = self.generate_presence()
-        if presence:
-            await self.change_presence(activity=discord.Game(name=presence))
-
-        self.current_price = self.get_token_price()
-
-        for guild in self.guilds:
-            await guild.me.edit(nick=self.generate_nickname())
 
     @staticmethod
     def parse_int(val):
