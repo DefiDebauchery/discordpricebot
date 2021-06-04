@@ -78,12 +78,17 @@ class PriceBot(commands.Bot):
         self.contracts['token'] = self.web3.eth.contract(address=self.token['contract'], abi=self.token['abi'])
         self.contracts['lp'] = self.web3.eth.contract(address=self.token['lp'], abi=fetch_abi(self.token['lp']))
 
+        if 'getFinalTokens' in self.contracts['lp'].functions.__dict__:
+            pair_info = self.contracts['lp'].functions.getFinalTokens().call()
+        else:
+            pair_info = [self.contracts['lp'].functions.token0().call(), self.contracts['lp'].functions.token1().call()]
+
         if not self.token.get('decimals'):
             self.token['decimals'] = self.contracts['token'].functions.decimals().call()
 
         self.help_command = commands.DefaultHelpCommand(command_attrs={"hidden": True})
 
-        self.dbengine = create_engine('sqlite:///pricebot.db', echo=True)
+        self.dbengine = create_engine('sqlite:///pricebot.db', echo=self.config.get('debug', False))
         session = sessionmaker(bind=self.dbengine)
         self.db = session()
 
@@ -92,6 +97,9 @@ class PriceBot(commands.Bot):
             return ''
 
         return commands.when_mentioned(bot, message)
+
+    def bscscan_link(self, link_hash, link_type='address', text=None):
+        return f'[{text or link_hash}](https://bscscan.com/{link_type}/{link_hash})'
 
     def get_amm(self, amm=None):
         if not amm:
@@ -106,6 +114,9 @@ class PriceBot(commands.Bot):
 
         value = f"{value} " if value else ''
         return f"{value}{self.token['name']}"
+
+    def get_icon(self):
+        return self.token['emoji'] or self.token['icon'] or self.token['name']
 
     def get_bnb_price(self, lp):
         bnb_amount = Decimal(self.contracts['bnb'].functions.balanceOf(lp).call())
@@ -122,7 +133,11 @@ class PriceBot(commands.Bot):
         bnb_price = self.get_bnb_price(bnb_lp)
 
         try:
-            final_price = self.bnb_amount / self.token_amount * bnb_price
+            if ratio := self.token.get('ratio'):
+                final_price = (self.bnb_amount * 2 * Decimal(str(ratio / 100))) / (self.token_amount * 2 * Decimal(str((100 - ratio) / 100))) * bnb_price
+            else:
+                final_price = self.bnb_amount / self.token_amount * bnb_price
+
         except ZeroDivisionError:
             final_price = 0
 
@@ -138,14 +153,18 @@ class PriceBot(commands.Bot):
         try:
             total_supply = self.contracts['lp'].functions.totalSupply().call()
             values = [Decimal(self.token_amount / total_supply), Decimal(self.bnb_amount / total_supply)]
-            lp_price = self.current_price * values[0] * 2
 
-            return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} {self.token['icon']} + {round(values[1], 4)} BNB"
+            total_token_price = Decimal(self.contracts['token'].functions.balanceOf(self.contracts['lp'].address).call()) * self.current_price
+            total_bnb_price = Decimal(self.contracts['bnb'].functions.balanceOf(self.contracts['lp'].address).call()) * self.bnb_price
+
+            lp_price = (total_token_price + total_bnb_price) / total_supply
+
+            return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} + {round(values[1], 4)} BNB"
         except ValueError:
             pass
 
     def generate_nickname(self):
-        return f"{self.token['icon']} ${self.current_price:.4f} ({round(self.bnb_amount / self.token_amount, 4):.4f})"
+        return f"{self.token.get('icon', self.token['name'])} ${self.current_price:.4f} ({round(self.bnb_amount / self.token_amount, 4):.4f})"
 
     async def get_lp_value(self):
         self.total_supply = self.contracts['lp'].functions.totalSupply().call()
