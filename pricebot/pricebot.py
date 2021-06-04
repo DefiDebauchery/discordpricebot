@@ -41,6 +41,7 @@ class PriceBot(commands.Bot):
     bnb_amount = 0
     bnb_price = 0
     token_amount = 0
+    lp_price = 0
     total_supply = 0
     display_precision = Decimal('0.0001')  # Round to 4 token_decimals
 
@@ -151,20 +152,20 @@ class PriceBot(commands.Bot):
             return ''
 
         try:
-            total_supply = self.contracts['lp'].functions.totalSupply().call()
-            values = [Decimal(self.token_amount / total_supply), Decimal(self.bnb_amount / total_supply)]
+            self.total_supply = self.contracts['lp'].functions.totalSupply().call()
+            values = [Decimal(self.token_amount / self.total_supply), Decimal(self.bnb_amount / self.total_supply)]
 
             total_token_price = Decimal(self.contracts['token'].functions.balanceOf(self.contracts['lp'].address).call()) * self.current_price
             total_bnb_price = Decimal(self.contracts['bnb'].functions.balanceOf(self.contracts['lp'].address).call()) * self.bnb_price
 
-            lp_price = (total_token_price + total_bnb_price) / total_supply
+            self.lp_price = (total_token_price + total_bnb_price) / self.total_supply
 
-            return f"LP ≈${round(lp_price, 2)} | {round(values[0], 4)} + {round(values[1], 4)} BNB"
+            return f"LP ≈${round(self.lp_price, 2)} | {round(values[0], 4)} + {round(values[1], 4)} BNB"
         except ValueError:
             pass
 
     def generate_nickname(self):
-        return f"{self.token.get('icon', self.token['name'])} ${self.current_price:.4f} ({round(self.bnb_amount / self.token_amount, 4):.4f})"
+        return f"{self.token.get('icon', self.token['name'])} ${self.current_price:.4f} ({round(self.current_price / self.bnb_price, 4):.4f})"
 
     async def get_lp_value(self):
         self.total_supply = self.contracts['lp'].functions.totalSupply().call()
